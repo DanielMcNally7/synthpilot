@@ -39,25 +39,48 @@ def print_presets(presets: list[dict]):
         print(f"      {desc}")
     print()
 
+OSC_TYPE_NAMES = {0:"Classic", 1:"Modern", 2:"Wavetable", 3:"Window",
+                   4:"Sine", 5:"FM2", 6:"FM3", 7:"String", 8:"Twist", 9:"Alias", 10:"S&H"}
+FILTER_TYPE_NAMES = {0:"LP12", 1:"LP24", 7:"HP12", 8:"HP24", 11:"BP12", 13:"Notch"}
+PLAY_MODE_NAMES = {0:"Poly", 1:"Mono", 2:"Mono2", 3:"Mono+Glide", 4:"Latch", 5:"Latch2"}
+
 def print_params(parameters: dict):
     """Show the key parameters of the selected preset."""
-    highlights = {
-        "osc1_type": "Osc 1 type",
-        "osc1_unison_voices": "Unison voices",
-        "osc1_unison_detune": "Detune",
-        "filter1_type": "Filter type",
-        "filter1_cutoff": "Filter cutoff",
-        "filter1_resonance": "Resonance",
-        "amp_attack": "Attack",
-        "amp_decay": "Decay",
-        "amp_sustain": "Sustain",
-        "amp_release": "Release",
-    }
+    from parameter_schema import ALL_PARAMS
+
+    def bar(val, width=20):
+        v = max(0.0, min(1.0, float(val)))
+        filled = int(v * width)
+        return "█" * filled + "░" * (width - filled)
+
     print("\n  ── Parameters ──────────────────────────")
-    for key, label in highlights.items():
-        val = parameters.get(key, 0.0)
-        bar = "█" * int(val * 20) + "░" * (20 - int(val * 20))
-        print(f"  {label:<20} {bar}  {val:.2f}")
+
+    # Integer/enum params — show name not bar
+    osc_type = int(parameters.get("osc1_type", 0))
+    filt_type = int(parameters.get("filter1_type", 1))
+    mode = int(parameters.get("play_mode", 0))
+    voices_norm = parameters.get("osc1_unison_voices", 0.0)
+    voices_count = max(1, round(voices_norm * 16)) if voices_norm > 0 else 1
+
+    print(f"  {'Osc 1 type':<20} {OSC_TYPE_NAMES.get(osc_type, str(osc_type))}")
+    print(f"  {'Play mode':<20} {PLAY_MODE_NAMES.get(mode, str(mode))}")
+    print(f"  {'Unison voices':<20} {voices_count} voice{'s' if voices_count > 1 else ''}")
+    print(f"  {'Filter type':<20} {FILTER_TYPE_NAMES.get(filt_type, str(filt_type))}")
+
+    # Float params — show bar
+    float_highlights = [
+        ("osc1_unison_detune", "Detune"),
+        ("filter1_cutoff",     "Filter cutoff"),
+        ("filter1_resonance",  "Resonance"),
+        ("amp_attack",         "Attack"),
+        ("amp_decay",          "Decay"),
+        ("amp_sustain",        "Sustain"),
+        ("amp_release",        "Release"),
+        ("lfo1_depth",         "LFO depth"),
+    ]
+    for key, label in float_highlights:
+        val = float(parameters.get(key, 0.0))
+        print(f"  {label:<20} {bar(val)}  {val:.2f}")
     print()
 
 

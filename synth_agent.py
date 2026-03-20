@@ -46,6 +46,28 @@ FILTER ENVELOPE (feg) controls filter1_feg_amount + filter2_feg_amount:
   >0.5 = envelope opens the filter
   <0.5 = envelope closes the filter
 
+═══ POLYPHONY — CRITICAL ═══
+
+play_mode controls whether multiple notes can play simultaneously:
+  0 = Poly  (DEFAULT — always use this unless user asks for mono/lead)
+  1 = Mono  (only one note at a time — for mono leads, bass)
+  3 = Mono + Portamento (gliding mono)
+
+ALWAYS set play_mode=0 unless the user specifically asks for a monophonic sound.
+"Play chords", "polyphonic", "multiple notes" → play_mode=0
+"Mono lead", "one note", "bass line" → play_mode=1
+
+═══ VOLUME — CRITICAL ═══
+
+Always keep these at healthy levels to avoid quiet presets:
+  osc1_level: 0.89–0.93 (never below 0.7 unless intentional silence)
+  amp_volume: 0.95–0.98
+  global_volume: 0.90–0.95
+  prefilter_gain: 0.5–0.65
+
+Sine oscillator (type=4) runs quieter than Classic — compensate:
+  When osc1_type=4: set osc1_level=0.95, prefilter_gain=0.62, amp_volume=0.97
+
 ═══ SYNTHESIS KNOWLEDGE ═══
 
 Buzzy/rich sounds: Classic oscillator with sawtooth (param1 high), moderate filter cutoff + resonance

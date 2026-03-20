@@ -427,6 +427,11 @@ SCENE = {
         "value_type": "float_norm",
         "description": "Master output volume.",
     },
+    "play_mode": {
+        "osc_path": "/param/a/play_mode",            # ✓ confirmed from discovery
+        "value_type": "int",
+        "description": "Polyphony mode. INTEGER: 0=Poly (chords), 1=Mono, 3=Mono+Portamento. DEFAULT: 0.",
+    },
 }
 
 # ─── FULL SCHEMA ─────────────────────────────────────────────────────────────
@@ -518,6 +523,7 @@ DEFAULT_PRESET = {
     "amp_volume":         0.97,
     "amp_pan":            0.5,
     "global_volume":      0.91,
+    "play_mode":          0,      # Poly — always default to polyphonic (INTEGER)
 }
 
 
