@@ -27,7 +27,7 @@ class SurgeOSCController:
         self.client = udp_client.SimpleUDPClient(host, port)
         print(f"  OSC → Surge XT at {host}:{port}")
 
-    def send_param(self, param_name: str, value: float):
+    def send_param(self, param_name: str, value):
         """Send a single parameter value to Surge XT."""
         if param_name not in ALL_PARAMS:
             print(f"  ⚠️  Unknown param: {param_name}")
@@ -35,11 +35,14 @@ class SurgeOSCController:
 
         schema = ALL_PARAMS[param_name]
         osc_path = schema["osc_path"]
+        value_type = schema.get("value_type", "float_norm")
 
-        # Clamp to valid range
-        value = max(0.0, min(1.0, float(value)))
-
-        self.client.send_message(osc_path, value)
+        if value_type == "int" or value_type == "bool":
+            # Send as raw integer — Surge XT expects this for type selectors
+            self.client.send_message(osc_path, int(value))
+        else:
+            # float_norm — clamp to 0.0–1.0
+            self.client.send_message(osc_path, max(0.0, min(1.0, float(value))))
 
     def apply_preset(self, parameters: dict, delay_ms: int = 10):
         """

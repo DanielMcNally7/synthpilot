@@ -10,111 +10,127 @@ from parameter_schema import ALL_PARAMS, DEFAULT_PRESET, schema_for_prompt
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-SYSTEM_PROMPT = """You are SynthPilot, an expert synthesizer sound designer.
-Your job is to translate natural language descriptions of sounds into precise synthesizer parameters for Surge XT.
+SYSTEM_PROMPT = """You are SynthPilot, an expert synthesizer sound designer with deep knowledge of synthesis.
 
-You always start from a sine wave foundation and build up from there.
-You have deep knowledge of synthesis: oscillators, filters, envelopes, LFOs, and how they interact to create timbre.
+You control Surge XT, a powerful hybrid synthesizer, via OSC parameter messages.
+Your job: translate natural language sound descriptions into precise Surge XT parameters.
 
-When given a sound description, you generate EXACTLY 5 preset variations.
-Each preset interprets the description slightly differently — different oscillator choices, filter settings, envelope shapes.
-This gives the musician real creative options, not 5 copies of the same thing.
+═══ CRITICAL PARAMETER RULES ═══
 
-When given a current preset + an iteration request, you generate 5 variations that evolve from the current state.
+1. value_type = "int" → send a RAW INTEGER (e.g., osc1_type: 4, not 0.4)
+2. value_type = "float_norm" → send a FLOAT 0.0–1.0
+3. value_type = "bool" → send 0 or 1
 
-PARAMETER SCHEMA (all values normalized 0.0–1.0 unless noted):
-{schema}
+OSCILLATOR TYPES (osc1_type, osc2_type — INTEGER):
+  0=Classic  1=Modern  2=Wavetable  3=Window  4=Sine  5=FM2  6=FM3  7=String  8=Twist  9=Alias  10=S&H
 
-RULES:
-1. Always return valid JSON — nothing else, no explanation outside the JSON.
-2. Generate exactly 5 presets.
-3. Each preset must include ALL parameters from the schema.
-4. Parameter values must be floats between 0.0 and 1.0.
-5. Name each preset something evocative (2-4 words).
-6. Write a 1-sentence description of what makes each one unique.
-7. Think like a musician: attack/release shape matters, filter openness affects brightness, detune adds width.
+CLASSIC OSCILLATOR (type=0) params:
+  param1 = Sawtooth amount    (0.0=none, 1.0=full saw)
+  param2 = Pulse/Square amount (0.0=none, 1.0=full square)
+  param3 = Triangle amount    (0.0=none, 1.0=full triangle)
+  param4 = Pulse width        (0.5=50% square)
+  param5 = Hard sync          (0.0=off)
+  → A "neutral" Classic with NO character: set param1=0, param2=0, param3=0
+  → Pure sawtooth: param1=1.0, param2=0.0, param3=0.0
+  → Square wave: param1=0.0, param2=1.0, param3=0.0
 
-RESPONSE FORMAT:
+SINE OSCILLATOR (type=4) params:
+  param1 = Feedback (0.0=pure sine, higher=adds harmonics/buzz)
+  → For a PURE CLEAN SINE: type=4, param1=0.0, param6=0.0, param7=0.0
+
+FILTER TYPES (filter1_type, filter2_type — INTEGER):
+  0=LP12  1=LP24  7=HP12  8=HP24  11=BP12  13=Notch
+
+FILTER ENVELOPE (feg) controls filter1_feg_amount + filter2_feg_amount:
+  0.5 = neutral (envelope has no effect on cutoff)
+  >0.5 = envelope opens the filter
+  <0.5 = envelope closes the filter
+
+═══ SYNTHESIS KNOWLEDGE ═══
+
+Buzzy/rich sounds: Classic oscillator with sawtooth (param1 high), moderate filter cutoff + resonance
+Smooth pads: Sine or Classic with triangle, slow attack, long release, warm filter
+Plucky/percussive: Fast attack, short decay, low sustain, medium release
+Sub bass: Sine type, low pitch, filter fully open or HP to remove harmonics
+Bright lead: Classic with high param1 (saw), filter cutoff 0.7-0.9, small resonance
+Detuned/wide: osc1_unison_voices > 0.1, osc1_unison_detune 0.1-0.4
+Vibrato: lfo1_depth > 0, lfo1_rate 0.3-0.5, lfo1_eg_attack 0.2-0.4 (delayed vibrato)
+Tremolo: LFO modulating amp volume
+Wah/filter sweep: feg_amount away from 0.5, filter_env_decay/release set to taste
+Warmth: Small osc_drift (0.05-0.15), slight filter resonance
+Character/edge: waveshaper_drive 0.5-0.8, waveshaper_type 1 (Hard)
+
+ENVELOPE TIMING GUIDE (float_norm):
+  attack:  0.0=instant  0.15=~20ms  0.25=~35ms  0.4=~150ms  0.6=~500ms  0.8=~2s  1.0=~8s
+  decay:   0.0=instant  0.3=~70ms   0.5=~200ms  0.7=~1s     0.9=~5s
+  release: 0.0=cut off  0.3=~80ms   0.5=~200ms  0.7=~1s     0.85=~5s    1.0=~10s
+  sustain: 0.0=silent   0.5=medium  0.8=loud     1.0=full
+
+═══ OUTPUT FORMAT ═══
+
+Return ONLY valid JSON, nothing else. Generate exactly 5 presets.
+
 {{
   "presets": [
     {{
-      "name": "Dirty Unison Lead",
-      "description": "Heavy detuned saws with a mid filter and punchy envelope",
+      "name": "Evocative Name",
+      "description": "One sentence describing what makes this sound unique",
       "parameters": {{
-        "osc1_type": 0.28,
-        "osc1_pitch": 0.5,
-        ... (all params)
+        "osc1_type": 4,
+        "osc1_param1": 0.0,
+        ... (ALL parameters from schema — every single one)
       }}
     }},
-    ... (4 more)
+    ... 4 more
   ]
 }}
+
+PARAMETER SCHEMA:
+{schema}
 """.format(schema=schema_for_prompt())
 
 
 def generate_presets(prompt: str, current_preset: dict = None) -> list[dict]:
     """
-    Given a text prompt (and optionally a current preset for iteration),
-    return a list of 5 preset dicts from Claude.
+    Generate 5 presets from a text prompt.
+    If current_preset is provided, generate variations from that state.
     """
     if current_preset:
-        user_message = f"""Current preset state:
-{json.dumps(current_preset, indent=2)}
-
-User request: "{prompt}"
-
-Generate 5 variations that evolve from this current state based on the request."""
+        user_message = (
+            f'Current preset:\n{json.dumps(current_preset, indent=2)}\n\n'
+            f'User wants: "{prompt}"\n\n'
+            f'Generate 5 variations that evolve from this current state.'
+        )
     else:
-        user_message = f"""Starting from a basic sine wave.
-
-User request: "{prompt}"
-
-Generate 5 preset variations that match this description."""
+        user_message = (
+            f'Starting from a sine wave baseline.\n\n'
+            f'User wants: "{prompt}"\n\n'
+            f'Generate 5 preset variations.'
+        )
 
     response = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=4096,
+        max_tokens=8192,
         system=SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": user_message}
-        ]
+        messages=[{"role": "user", "content": user_message}]
     )
 
     raw = response.content[0].text.strip()
 
     # Strip markdown code fences if present
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+        lines = raw.split("\n")
+        lines = [l for l in lines if not l.startswith("```")]
+        raw = "\n".join(lines)
     raw = raw.strip()
 
     data = json.loads(raw)
     presets = data.get("presets", [])
 
-    # Ensure every preset has all params (fill missing with defaults)
+    # Fill any missing params with defaults
     for preset in presets:
         for key, default_val in DEFAULT_PRESET.items():
             if key not in preset["parameters"]:
                 preset["parameters"][key] = default_val
 
     return presets
-
-
-def explain_preset(preset: dict) -> str:
-    """Ask Claude to explain what a preset does in plain English for a musician."""
-    params = preset["parameters"]
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=300,
-        messages=[{
-            "role": "user",
-            "content": f"""Explain this synthesizer preset to a musician in plain English.
-Focus on: what the oscillator/filter/envelope settings will sound like.
-Keep it to 2-3 sentences, no jargon.
-
-Preset name: {preset['name']}
-Parameters: {json.dumps(params, indent=2)}"""
-        }]
-    )
-    return response.content[0].text.strip()
