@@ -166,6 +166,26 @@ LFO = {
         "osc_path": "/param/a/vlfo/1/deform",        # ✓
         "description": "LFO waveform deformation/shape.",
     },
+    "lfo1_eg_attack": {
+        "osc_path": "/param/a/vlfo/1/eg/attack",     # ✓
+        "description": "LFO fade-in time. How long before LFO reaches full depth.",
+    },
+    "lfo1_eg_hold": {
+        "osc_path": "/param/a/vlfo/1/eg/hold",       # ✓
+        "description": "LFO hold time at full depth before decay.",
+    },
+    "lfo1_eg_decay": {
+        "osc_path": "/param/a/vlfo/1/eg/decay",      # ✓
+        "description": "LFO decay — how fast modulation fades after hold.",
+    },
+    "lfo1_eg_sustain": {
+        "osc_path": "/param/a/vlfo/1/eg/sustain",    # ✓
+        "description": "LFO sustain level while key is held.",
+    },
+    "lfo1_eg_release": {
+        "osc_path": "/param/a/vlfo/1/eg/release",    # ✓
+        "description": "LFO release — modulation fade time after key release.",
+    },
 }
 
 # ─── GLOBAL ──────────────────────────────────────────────────────────────────
@@ -235,6 +255,11 @@ DEFAULT_PRESET = {
     "lfo1_rate":          0.46,
     "lfo1_depth":         0.0,    # off
     "lfo1_deform":        0.5,
+    "lfo1_eg_attack":     0.0,
+    "lfo1_eg_hold":       0.0,
+    "lfo1_eg_decay":      0.5,
+    "lfo1_eg_sustain":    1.0,
+    "lfo1_eg_release":    0.5,
     "amp_volume":         0.97,
     "amp_pan":            0.5,    # center
     "osc_drift":          0.0,
