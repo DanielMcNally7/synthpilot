@@ -11,7 +11,6 @@ Usage:
 
 import os
 import sys
-import json
 import argparse
 from dotenv import load_dotenv
 
@@ -46,8 +45,6 @@ PLAY_MODE_NAMES = {0:"Poly", 1:"Mono", 2:"Mono2", 3:"Mono+Glide", 4:"Latch", 5:"
 
 def print_params(parameters: dict):
     """Show the key parameters of the selected preset."""
-    from parameter_schema import ALL_PARAMS
-
     def bar(val, width=20):
         v = max(0.0, min(1.0, float(val)))
         filled = int(v * width)
@@ -67,7 +64,17 @@ def print_params(parameters: dict):
     print(f"  {'Unison voices':<20} {voices_count} voice{'s' if voices_count > 1 else ''}")
     print(f"  {'Filter type':<20} {FILTER_TYPE_NAMES.get(filt_type, str(filt_type))}")
 
+    # Volume/level params — show raw value
+    print()
+    print(f"  {'osc1_level':<20} {parameters.get('osc1_level', '?')}")
+    print(f"  {'prefilter_gain':<20} {parameters.get('prefilter_gain', '?')}")
+    print(f"  {'amp_volume':<20} {parameters.get('amp_volume', '?')}")
+    print(f"  {'global_volume':<20} {parameters.get('global_volume', '?')}")
+    print(f"  {'osc1_octave':<20} {parameters.get('osc1_octave', '?')}")
+    print(f"  {'scene_octave':<20} {parameters.get('scene_octave', '?')}")
+
     # Float params — show bar
+    print()
     float_highlights = [
         ("osc1_unison_detune", "Detune"),
         ("filter1_cutoff",     "Filter cutoff"),
@@ -94,11 +101,6 @@ def main():
     parser.add_argument("--port", type=int, default=53280, help="Surge XT OSC port")
     args = parser.parse_args()
 
-    # Check API key
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("✗ ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key.")
-        sys.exit(1)
-
     osc = SurgeOSCController(host=args.host, port=args.port)
 
     if args.ping:
@@ -110,17 +112,26 @@ def main():
         print("  ✓ Reset to sine wave default.")
         return
 
+    # Check API key — only needed for preset generation
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("✗ ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key.")
+        sys.exit(1)
+
     print(BANNER)
     print("  Make sure Surge XT is open with OSC enabled:")
     print("  Main Menu → OSC → Enable OSC (port 53280)\n")
 
     current_preset = None   # tracks the currently applied preset for iteration
     current_params = dict(DEFAULT_PRESET)
+    current_batch = []      # last generated batch — always switchable
 
     while True:
         try:
-            if current_preset:
-                prompt = input("  ✦  Iterate (describe changes) or [n]ew / [q]uit: ").strip()
+            if current_batch:
+                if current_preset:
+                    prompt = input("  ✦  Iterate / [1-5] switch / [n]ew / [q]uit: ").strip()
+                else:
+                    prompt = input("  ✦  [1-5] switch / describe to iterate / [n]ew / [q]uit: ").strip()
             else:
                 prompt = input("  🎛  Describe the sound you want: ").strip()
 
@@ -134,6 +145,7 @@ def main():
             if prompt.lower() in ("n", "new"):
                 current_preset = None
                 current_params = dict(DEFAULT_PRESET)
+                current_batch = []
                 osc.reset_to_default()
                 print("  ✓ Reset to sine wave. Start fresh.\n")
                 continue
@@ -143,6 +155,19 @@ def main():
                 current_params = dict(DEFAULT_PRESET)
                 current_preset = None
                 print("  ✓ Reset.\n")
+                continue
+
+            # Switch within current batch
+            if current_batch and prompt.isdigit() and 1 <= int(prompt) <= len(current_batch):
+                idx = int(prompt) - 1
+                selected = current_batch[idx]
+                current_preset = selected
+                current_params = selected["parameters"]
+                print(f"\n  → {selected['name']}")
+                print_params(current_params)
+                print("  Sending to Surge XT...")
+                osc.apply_preset(current_params)
+                print()
                 continue
 
             # Generate presets
@@ -160,6 +185,7 @@ def main():
                 print(f"\n  ✗ Claude error: {e}")
                 continue
 
+            current_batch = presets
             print(" ✓\n")
             print_presets(presets)
 

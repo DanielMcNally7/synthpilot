@@ -6,15 +6,19 @@ Setup in Surge XT:
   Main Menu (hamburger) → OSC → Enable OSC
   Default port: 53280
 
-Parameter paths are verified against Surge XT 1.3+ OSC implementation.
-If a parameter doesn't respond, right-click it in Surge XT and look at
-the OSC address shown in the context menu to get the exact path.
+SOURCE-CONFIRMED RULE (OpenSoundControl.cpp):
+  Surge XT checks isFloat32() on every incoming message and discards
+  non-floats with an error. ALL arguments must be OSC float32.
+
+  - float_norm params → send normalized float 0.0–1.0
+  - int params        → send raw integer cast to float (e.g. float(4) for Sine)
+                        Surge internally converts via intScaledToFloat()
+  - bool params       → send 0.0 (false) or 1.0 (true)
 """
 
 import time
 from pythonosc import udp_client
-from pythonosc.osc_message_builder import OscMessageBuilder
-from parameter_schema import ALL_PARAMS
+from parameter_schema import ALL_PARAMS, DEFAULT_PRESET
 
 SURGE_HOST = "127.0.0.1"
 SURGE_PORT = 53280
@@ -37,9 +41,11 @@ class SurgeOSCController:
         osc_path = schema["osc_path"]
         value_type = schema.get("value_type", "float_norm")
 
-        if value_type == "int" or value_type == "bool":
-            # Send as raw integer — Surge XT expects this for type selectors
-            self.client.send_message(osc_path, int(value))
+        if value_type in ("int", "bool"):
+            # Must be float32 — Surge rejects OSC int type entirely.
+            # int/bool: send raw integer value cast to float.
+            # Surge's processBlockOSC calls intScaledToFloat() internally.
+            self.client.send_message(osc_path, float(int(value)))
         else:
             # float_norm — clamp to 0.0–1.0
             self.client.send_message(osc_path, max(0.0, min(1.0, float(value))))
@@ -60,17 +66,16 @@ class SurgeOSCController:
 
     def reset_to_default(self):
         """Reset Surge XT to the default sine wave baseline."""
-        from parameter_schema import DEFAULT_PRESET
         print("  Resetting to default sine wave...")
         self.apply_preset(DEFAULT_PRESET)
 
     def test_connection(self) -> bool:
         """
         Send a test message to verify Surge XT is listening.
-        Sends master volume to a safe value and back.
+        Returns True if the message was sent without error (UDP — no ack).
         """
         try:
-            self.client.send_message("/param/a/volume", 0.8)
+            self.client.send_message("/param/a/amp/volume", 0.8)
             return True
         except Exception as e:
             print(f"  ✗ OSC connection failed: {e}")

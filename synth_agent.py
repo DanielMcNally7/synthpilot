@@ -17,12 +17,13 @@ Your job: translate natural language sound descriptions into precise Surge XT pa
 
 ═══ CRITICAL PARAMETER RULES ═══
 
-1. value_type = "int" → send a RAW INTEGER (e.g., osc1_type: 4, not 0.4)
-2. value_type = "float_norm" → send a FLOAT 0.0–1.0
-3. value_type = "bool" → send 0 or 1
+1. value_type = "int"        → RAW INTEGER as a number (e.g., osc1_type: 4, play_mode: 0)
+2. value_type = "float_norm" → FLOAT 0.0–1.0
+3. value_type = "bool"       → 0 or 1 (never omit — osc1_mute MUST be 0 unless silencing intentionally)
 
-OSCILLATOR TYPES (osc1_type, osc2_type — INTEGER):
-  0=Classic  1=Modern  2=Wavetable  3=Window  4=Sine  5=FM2  6=FM3  7=String  8=Twist  9=Alias  10=S&H
+OSCILLATOR TYPES (osc1_type, osc2_type — INTEGER, source-confirmed from SurgeStorage.h):
+  0=Classic  1=Sine  2=Wavetable  3=S&H Noise  5=FM3  6=FM2  7=Window  8=Modern  9=String  10=Twist  11=Alias
+  ⚠ 4=AudioInput — NEVER use 4, it produces silence with no audio routed in
 
 CLASSIC OSCILLATOR (type=0) params:
   param1 = Sawtooth amount    (0.0=none, 1.0=full saw)
@@ -34,17 +35,27 @@ CLASSIC OSCILLATOR (type=0) params:
   → Pure sawtooth: param1=1.0, param2=0.0, param3=0.0
   → Square wave: param1=0.0, param2=1.0, param3=0.0
 
-SINE OSCILLATOR (type=4) params:
+SINE OSCILLATOR (type=1) params:
   param1 = Feedback (0.0=pure sine, higher=adds harmonics/buzz)
-  → For a PURE CLEAN SINE: type=4, param1=0.0, param6=0.0, param7=0.0
+  param2 = FM routing (0.0=off)
+  param3 = Internal filter (0.0=off)
+  → For a PURE CLEAN SINE: type=1, param1=0.0, param2=0.0, param3=0.0
 
 FILTER TYPES (filter1_type, filter2_type — INTEGER):
-  0=LP12  1=LP24  7=HP12  8=HP24  11=BP12  13=Notch
+  0=LP12  1=LP24  2=Moog  7=HP12  8=HP24  11=BP12  13=Notch
 
 FILTER ENVELOPE (feg) controls filter1_feg_amount + filter2_feg_amount:
   0.5 = neutral (envelope has no effect on cutoff)
   >0.5 = envelope opens the filter
   <0.5 = envelope closes the filter
+
+OSC ROUTING (osc1_route, osc2_route, osc3_route — INTEGER):
+  0=Filter1 only  1=Both filters  2=Filter2 only
+  Use different routes to split oscillators through different filter paths.
+
+FM ROUTING (fm_routing — INTEGER):
+  0=Off  1=Osc2→Osc1  2=Osc3→Osc2→Osc1  3=Osc2+3→Osc1  4=Osc3→Osc1+2
+  When using FM: set fm_depth > 0 and fm_routing to desired config.
 
 ═══ POLYPHONY — CRITICAL ═══
 
@@ -54,19 +65,28 @@ play_mode controls whether multiple notes can play simultaneously:
   3 = Mono + Portamento (gliding mono)
 
 ALWAYS set play_mode=0 unless the user specifically asks for a monophonic sound.
+ALWAYS set pitchbend_up=2 and pitchbend_down=2 (or higher if wide pitch range is desired). Never set to 0 — that disables the pitch wheel entirely.
 "Play chords", "polyphonic", "multiple notes" → play_mode=0
 "Mono lead", "one note", "bass line" → play_mode=1
 
-═══ VOLUME — CRITICAL ═══
+═══ VOLUME + MUTE — CRITICAL ═══
 
-Always keep these at healthy levels to avoid quiet presets:
-  osc1_level: 0.89–0.93 (never below 0.7 unless intentional silence)
+MUTE PARAMS — must ALWAYS be 0 (unmuted) unless you explicitly want silence:
+  osc1_mute: 0   osc2_mute: 0   osc3_mute: 0
+  osc1_solo: 0   noise_mute: 0  rm1x2_mute: 0  rm2x3_mute: 0
+
+Volume levels — keep healthy:
+  osc1_level: 0.89–0.95 (never below 0.7 unless intentional silence)
   amp_volume: 0.95–0.98
   global_volume: 0.90–0.95
   prefilter_gain: 0.5–0.65
 
-Sine oscillator (type=4) runs quieter than Classic — compensate:
-  When osc1_type=4: set osc1_level=0.95, prefilter_gain=0.62, amp_volume=0.97
+Sine oscillator (type=1) runs quieter than Classic — compensate:
+  When osc1_type=1 (Sine): set osc1_level=0.95, prefilter_gain=0.62, amp_volume=0.97
+
+Classic oscillator (type=0) — must have at least one waveform component active:
+  param1 (saw), param2 (pulse), or param3 (triangle) must be > 0.
+  All three at 0.0 = complete silence.
 
 ═══ SYNTHESIS KNOWLEDGE ═══
 
@@ -79,8 +99,14 @@ Detuned/wide: osc1_unison_voices > 0.1, osc1_unison_detune 0.1-0.4
 Vibrato: lfo1_depth > 0, lfo1_rate 0.3-0.5, lfo1_eg_attack 0.2-0.4 (delayed vibrato)
 Tremolo: LFO modulating amp volume
 Wah/filter sweep: feg_amount away from 0.5, filter_env_decay/release set to taste
-Warmth: Small osc_drift (0.05-0.15), slight filter resonance
+Warmth: Small osc_drift (0.05-0.15), slight filter resonance, amp_mode=1 (Analog)
 Character/edge: waveshaper_drive 0.5-0.8, waveshaper_type 1 (Hard)
+Dual osc texture: Set osc2_level > 0, detune osc2_pitch slightly from 0.5
+Bell/metallic: ring_mod_1x2 > 0 with osc2 at harmonic interval
+Wide stereo: amp_width 0.7–1.0
+Velocity dynamics: amp_vel_to_gain 0.7–1.0 for expressive playing
+Multi-LFO: Use lfo2–lfo6 for independent modulations (filter, pitch, pan)
+Scene LFOs (slfo1–slfo3): Shared across all voices, good for slow pads/drones
 
 ENVELOPE TIMING GUIDE (float_norm):
   attack:  0.0=instant  0.15=~20ms  0.25=~35ms  0.4=~150ms  0.6=~500ms  0.8=~2s  1.0=~8s
@@ -92,15 +118,24 @@ ENVELOPE TIMING GUIDE (float_norm):
 
 Return ONLY valid JSON, nothing else. Generate exactly 5 presets.
 
+Output ONLY the parameters you are intentionally setting for this sound — omit parameters
+you are leaving at their defaults. Missing parameters are filled automatically.
+
+ALWAYS include these critical params (never omit):
+  osc1_type, osc1_mute, osc1_level, play_mode, pitchbend_up, pitchbend_down,
+  amp_volume, global_volume, amp_attack, amp_decay, amp_sustain, amp_release,
+  filter1_cutoff, filter1_resonance, filter1_feg_amount
+
 {{
   "presets": [
     {{
       "name": "Evocative Name",
       "description": "One sentence describing what makes this sound unique",
       "parameters": {{
-        "osc1_type": 4,
-        "osc1_param1": 0.0,
-        ... (ALL parameters from schema — every single one)
+        "osc1_type": 1,
+        "osc1_mute": 0,
+        "osc1_level": 0.95,
+        ... (only params you are intentionally setting)
       }}
     }},
     ... 4 more
@@ -131,8 +166,8 @@ def generate_presets(prompt: str, current_preset: dict = None) -> list[dict]:
         )
 
     response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=8192,
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}]
     )
